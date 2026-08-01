@@ -4,41 +4,33 @@ import platform
 import shutil
 import sys
 
-import typer
 from rich.console import Console
 
 console = Console()
 
 
-def _exists(command: str) -> bool:
+def command_exists(command: str) -> bool:
+    """指定したコマンドが利用可能か確認する。"""
     return shutil.which(command) is not None
 
 
-def doctor() -> None:
-    """開発環境を確認します。"""
-
+def run_doctor() -> None:
+    """必要なツールと実行環境を表示する。"""
     console.print("[bold cyan]anju environment check[/bold cyan]")
     console.print("----------------------")
 
-    console.print(
-        f"[{'green' if _exists('python3') else 'red'}]"
-        f"{'OK' if _exists('python3') else 'NG'}[/] Python"
+    commands = (
+        ("yt-dlp", "yt-dlp"),
+        ("ffmpeg", "ffmpeg"),
+        ("TwitchDownloaderCLI", "TwitchDownloaderCLI"),
     )
 
-    console.print(
-        f"[{'green' if _exists('yt-dlp') else 'red'}]"
-        f"{'OK' if _exists('yt-dlp') else 'NG'}[/] yt-dlp"
-    )
+    for command, display_name in commands:
+        exists = command_exists(command)
+        status = "OK" if exists else "NG"
+        color = "green" if exists else "red"
 
-    console.print(
-        f"[{'green' if _exists('ffmpeg') else 'red'}]"
-        f"{'OK' if _exists('ffmpeg') else 'NG'}[/] ffmpeg"
-    )
+        console.print(f"[{color}][{status}][/{color}] {display_name}")
 
-    console.print(
-        f"[{'green' if _exists('TwitchDownloaderCLI') else 'red'}]"
-        f"{'OK' if _exists('TwitchDownloaderCLI') else 'NG'}[/] TwitchDownloaderCLI"
-    )
-
-    console.print(f"[blue]INFO[/] OS: {platform.system()}")
-    console.print(f"[blue]INFO[/] Python: {sys.version.split()[0]}")
+    console.print(f"[blue][INFO][/blue] OS: {platform.system()}")
+    console.print(f"[blue][INFO][/blue] Python: {sys.version.split()[0]}")
