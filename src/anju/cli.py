@@ -3,9 +3,10 @@ from __future__ import annotations
 import typer
 from rich.console import Console
 
+from anju.doctor import doctor
+
 app = typer.Typer(
-    name="anju",
-    help="Twitch切り抜き制作用CLIツール",
+    help="AI-powered CLI toolkit for content creators.",
     no_args_is_help=True,
 )
 
@@ -19,8 +20,14 @@ def main() -> None:
 
 @app.command()
 def hello() -> None:
-    """CLIの動作確認を行います。"""
-    console.print("[bold green]Hello, Creator Tools![/bold green]")
+    """動作確認。"""
+    console.print("[bold green]Hello Creator Tools![/bold green]")
+
+
+@app.command()
+def doctor_command() -> None:
+    """環境をチェックします。"""
+    doctor()
 
 
 if __name__ == "__main__":
