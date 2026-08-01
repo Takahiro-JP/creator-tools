@@ -7,6 +7,7 @@ from rich.console import Console
 
 from anju.config import get_config_path, load_config
 from anju.doctor import run_doctor
+from anju.downloader import download_video
 
 app = typer.Typer(
     name="anju",
@@ -25,7 +26,9 @@ def main() -> None:
 @app.command()
 def hello() -> None:
     """CLIの動作確認を行います。"""
-    console.print("[bold green]Hello, Creator Tools![/bold green]")
+    console.print(
+        "[bold green]Hello, Creator Tools![/bold green]"
+    )
 
 
 @app.command(name="doctor")
@@ -39,7 +42,9 @@ def config_command() -> None:
     """現在の設定を表示します。"""
     config = load_config()
 
-    console.print(f"[blue]設定ファイル:[/blue] {get_config_path()}")
+    console.print(
+        f"[blue]設定ファイル:[/blue] {get_config_path()}"
+    )
     console.print()
     console.print_json(
         json.dumps(
@@ -48,6 +53,27 @@ def config_command() -> None:
             indent=2,
         )
     )
+
+
+@app.command(name="download")
+def download_command(
+    url: str = typer.Argument(
+        ...,
+        help="Twitch VOD URL",
+    ),
+) -> None:
+    """Twitch VODをダウンロードします。"""
+    try:
+        download_video(url)
+    except (RuntimeError, ValueError) as error:
+        console.print(
+            f"[bold red]エラー:[/bold red] {error}"
+        )
+        raise typer.Exit(code=1) from error
+    except KeyboardInterrupt:
+        console.print()
+        console.print("処理を中断しました。")
+        raise typer.Exit(code=130) from None
 
 
 if __name__ == "__main__":
