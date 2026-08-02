@@ -44,9 +44,7 @@ def load_config() -> dict[str, Any]:
         return config
 
     try:
-        config = json.loads(
-            config_path.read_text(encoding="utf-8")
-        )
+        config = json.loads(config_path.read_text(encoding="utf-8"))
     except OSError as error:
         raise RuntimeError(
             f"設定ファイルを読み込めませんでした: {config_path}"
@@ -57,8 +55,6 @@ def load_config() -> dict[str, Any]:
         ) from error
 
     if not isinstance(config, dict):
-        raise RuntimeError(
-            f"設定ファイルの内容が不正です: {config_path}"
-        )
+        raise RuntimeError(f"設定ファイルの内容が不正です: {config_path}")
 
     return config

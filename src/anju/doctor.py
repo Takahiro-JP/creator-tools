@@ -30,9 +30,7 @@ def print_status(
     status = "OK" if available else "NG"
     color = "green" if available else "red"
 
-    console.print(
-        f"[{color}][{status}][/{color}] {name}"
-    )
+    console.print(f"[{color}][{status}][/{color}] {name}")
 
 
 def run_doctor() -> None:
@@ -40,9 +38,7 @@ def run_doctor() -> None:
     config = load_config()
     cli_path = find_twitch_downloader(config)
 
-    console.print(
-        "[bold cyan]anju environment check[/bold cyan]"
-    )
+    console.print("[bold cyan]anju environment check[/bold cyan]")
     console.print("----------------------")
 
     print_status(
@@ -59,29 +55,11 @@ def run_doctor() -> None:
     )
 
     if cli_path:
-        console.print(
-            f"[blue][INFO][/blue] "
-            f"TwitchDownloaderCLI: {cli_path}"
-        )
+        console.print(f"[blue][INFO][/blue] TwitchDownloaderCLI: {cli_path}")
 
-    base_dir = Path(
-        str(
-            config.get("base_dir")
-            or get_default_base_dir()
-        )
-    ).expanduser()
+    base_dir = Path(str(config.get("base_dir") or get_default_base_dir())).expanduser()
 
-    console.print(
-        f"[blue][INFO][/blue] 保存先: {base_dir}"
-    )
-    console.print(
-        f"[blue][INFO][/blue] "
-        f"設定ファイル: {get_config_path()}"
-    )
-    console.print(
-        f"[blue][INFO][/blue] OS: {platform.system()}"
-    )
-    console.print(
-        f"[blue][INFO][/blue] "
-        f"Python: {sys.version.split()[0]}"
-    )
+    console.print(f"[blue][INFO][/blue] 保存先: {base_dir}")
+    console.print(f"[blue][INFO][/blue] 設定ファイル: {get_config_path()}")
+    console.print(f"[blue][INFO][/blue] OS: {platform.system()}")
+    console.print(f"[blue][INFO][/blue] Python: {sys.version.split()[0]}")
