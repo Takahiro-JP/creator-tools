@@ -14,7 +14,8 @@ authors = [
 ]
 dependencies = [
     "typer>=0.16,<1.0",
-    "rich>=14,<15"
+    "rich>=14,<15",
+    "faster-whisper>=1.1,<2.0"
 ]
 
 [project.optional-dependencies]
@@ -39,3 +40,6 @@ line-length = 88
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/anju/cli.py" = ["B008"]

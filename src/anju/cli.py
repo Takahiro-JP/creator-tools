@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import typer
 from rich.console import Console
@@ -8,6 +9,7 @@ from rich.console import Console
 from anju.config import get_config_path, load_config
 from anju.doctor import run_doctor
 from anju.downloader import download_video
+from anju.transcriber import transcribe_project
 
 app = typer.Typer(
     name="anju",
@@ -61,6 +63,46 @@ def download_command(
     """Twitch VODをダウンロードします。"""
     try:
         download_video(url)
+    except (RuntimeError, ValueError) as error:
+        console.print(f"[bold red]エラー:[/bold red] {error}")
+        raise typer.Exit(code=1) from error
+    except KeyboardInterrupt:
+        console.print()
+        console.print("処理を中断しました。")
+        raise typer.Exit(code=130) from None
+
+
+@app.command(name="transcribe")
+def transcribe_command(
+    project_dir: Path = typer.Argument(
+        ...,
+        exists=True,
+        file_okay=False,
+        dir_okay=True,
+        readable=True,
+        resolve_path=True,
+        help="文字起こし対象のプロジェクトフォルダ",
+    ),
+    model: str = typer.Option(
+        "small",
+        "--model",
+        "-m",
+        help="Whisperモデル名",
+    ),
+    language: str = typer.Option(
+        "ja",
+        "--language",
+        "-l",
+        help="音声言語",
+    ),
+) -> None:
+    """プロジェクト内の動画を文字起こしします。"""
+    try:
+        transcribe_project(
+            project_dir,
+            model_size=model,
+            language=language,
+        )
     except (RuntimeError, ValueError) as error:
         console.print(f"[bold red]エラー:[/bold red] {error}")
         raise typer.Exit(code=1) from error
