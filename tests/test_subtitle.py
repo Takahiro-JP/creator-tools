@@ -1,4 +1,3 @@
-
 from anju.clipgen import Clip
 from anju.subtitle import (
     SubtitleEntry,
