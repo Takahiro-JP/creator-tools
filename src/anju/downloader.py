@@ -11,6 +11,7 @@ from typing import Any
 from rich.console import Console
 
 from anju.config import get_default_base_dir, load_config
+from anju.project import Project, ProjectMetadata
 from anju.utils import format_upload_date, open_folder, sanitize_filename
 
 console = Console()
@@ -33,9 +34,7 @@ def find_twitch_downloader(
     config: dict[str, Any],
 ) -> Path | None:
     """設定、PATH、標準候補からTwitchDownloaderCLIを探す。"""
-    configured_path = str(
-        config.get("twitch_downloader_cli") or ""
-    ).strip()
+    configured_path = str(config.get("twitch_downloader_cli") or "").strip()
 
     if configured_path:
         path = Path(configured_path).expanduser()
@@ -65,14 +64,8 @@ def find_twitch_downloader(
         )
     else:
         candidates = (
-            Path.home()
-            / "Tools"
-            / "TwitchDownloader"
-            / "TwitchDownloaderCLI",
-            Path.home()
-            / "Downloads"
-            / "TwitchDownloaderCLI"
-            / "TwitchDownloaderCLI",
+            Path.home() / "Tools" / "TwitchDownloader" / "TwitchDownloaderCLI",
+            Path.home() / "Downloads" / "TwitchDownloaderCLI" / "TwitchDownloaderCLI",
             Path("/opt/homebrew/bin/TwitchDownloaderCLI"),
             Path("/usr/local/bin/TwitchDownloaderCLI"),
         )
@@ -102,53 +95,21 @@ def get_video_metadata(url: str) -> dict[str, Any]:
     if result.returncode != 0:
         error_message = result.stderr.strip() or "不明なエラー"
 
-        raise RuntimeError(
-            "動画情報の取得に失敗しました。\n"
-            f"{error_message}"
-        )
+        raise RuntimeError(f"動画情報の取得に失敗しました。\n{error_message}")
 
     try:
         metadata = json.loads(result.stdout)
     except json.JSONDecodeError as error:
-        raise RuntimeError(
-            "yt-dlpの出力を解析できませんでした。"
-        ) from error
+        raise RuntimeError("yt-dlpの出力を解析できませんでした。") from error
 
     if not isinstance(metadata, dict):
-        raise RuntimeError(
-            "yt-dlpから予期しない形式の情報が返されました。"
-        )
+        raise RuntimeError("yt-dlpから予期しない形式の情報が返されました。")
 
     return metadata
 
 
-def create_project_directories(
-    base_dir: Path,
-    date_text: str,
-) -> dict[str, Path]:
-    """日付別の作業フォルダを作成する。"""
-    root_dir = base_dir / date_text
-
-    directories = {
-        "root": root_dir,
-        "video": root_dir / "video",
-        "clips": root_dir / "clips",
-        "subtitles": root_dir / "subtitles",
-        "thumbnail": root_dir / "thumbnail",
-        "project": root_dir / "project",
-    }
-
-    for directory in directories.values():
-        directory.mkdir(
-            parents=True,
-            exist_ok=True,
-        )
-
-    return directories
-
-
 def download_video(url: str) -> None:
-    """Twitch VODをダウンロードして日付別に整理する。"""
+    """Twitch VODをダウンロードしてプロジェクトを作成する。"""
     config = load_config()
     cli_path = find_twitch_downloader(config)
 
@@ -160,68 +121,56 @@ def download_video(url: str) -> None:
         )
 
     if shutil.which("yt-dlp") is None:
-        raise RuntimeError(
-            "yt-dlpが見つかりません。"
-        )
+        raise RuntimeError("yt-dlpが見つかりません。")
 
     video_id = extract_video_id(url)
 
-    console.print(
-        "[cyan]動画情報を取得しています...[/cyan]"
-    )
+    console.print("[cyan]動画情報を取得しています...[/cyan]")
 
-    metadata = get_video_metadata(url)
+    source_metadata = get_video_metadata(url)
 
-    title = sanitize_filename(
-        str(metadata.get("title") or "Untitled")
-    )
+    title = sanitize_filename(str(source_metadata.get("title") or "Untitled"))
 
     uploader = sanitize_filename(
         str(
-            metadata.get("uploader")
-            or metadata.get("channel")
+            source_metadata.get("uploader")
+            or source_metadata.get("channel")
             or "Twitch"
         )
     )
 
-    date_text = format_upload_date(
-        metadata.get("upload_date")
-    )
+    date_text = format_upload_date(source_metadata.get("upload_date"))
 
-    base_dir = Path(
-        str(
-            config.get("base_dir")
-            or get_default_base_dir()
-        )
-    ).expanduser()
+    base_dir = Path(str(config.get("base_dir") or get_default_base_dir())).expanduser()
 
-    directories = create_project_directories(
+    project = Project.create(
         base_dir=base_dir,
         date_text=date_text,
+        video_id=video_id,
     )
 
-    temporary_path = (
-        directories["video"] / f"{video_id}.mp4"
+    metadata = ProjectMetadata.create(
+        video_id=video_id,
+        source_url=url,
+        title=title,
+        uploader=uploader,
+        upload_date=date_text,
+        duration=source_metadata.get("duration"),
     )
 
-    final_filename = (
-        f"{date_text}_{uploader}_{title}.mp4"
-    )
+    project.save_metadata(metadata)
 
-    final_path = (
-        directories["video"] / final_filename
-    )
+    temporary_path = project.raw_dir / f"{video_id}.mp4"
+
+    final_path = project.raw_dir / (f"{date_text}_{uploader}_{title}.mp4")
 
     if final_path.exists():
-        final_path = directories["video"] / (
-            f"{date_text}_{uploader}_{title}_"
-            f"{video_id}.mp4"
+        final_path = project.raw_dir / (
+            f"{date_text}_{uploader}_{title}_{video_id}.mp4"
         )
 
     console.print()
-    console.print(
-        "[bold]ダウンロードを開始します。[/bold]"
-    )
+    console.print("[bold]ダウンロードを開始します。[/bold]")
     console.print(f"動画ID: {video_id}")
     console.print(f"一時保存先: {temporary_path}")
     console.print()
@@ -238,26 +187,23 @@ def download_video(url: str) -> None:
     )
 
     if result.returncode != 0:
-        raise RuntimeError(
-            "動画のダウンロードに失敗しました。"
-        )
+        raise RuntimeError("動画のダウンロードに失敗しました。")
 
     if not temporary_path.exists():
         raise RuntimeError(
-            "ダウンロード済みファイルが"
-            "見つかりません。\n"
-            f"{temporary_path}"
+            f"ダウンロード済みファイルが見つかりません。\n{temporary_path}"
         )
 
     temporary_path.rename(final_path)
 
     console.print()
-    console.print(
-        "[bold green]ダウンロードが完了しました。[/bold green]"
-    )
+    console.print("[bold green]ダウンロードが完了しました。[/bold green]")
     console.print(final_path)
     console.print()
-    console.print("[blue]作業フォルダ:[/blue]")
-    console.print(directories["root"])
+    console.print("[blue]プロジェクト:[/blue]")
+    console.print(project.root_dir)
+    console.print()
+    console.print("[blue]メタデータ:[/blue]")
+    console.print(project.metadata_path)
 
-    open_folder(directories["root"])
+    open_folder(project.root_dir)

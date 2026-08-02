@@ -26,9 +26,7 @@ def main() -> None:
 @app.command()
 def hello() -> None:
     """CLIの動作確認を行います。"""
-    console.print(
-        "[bold green]Hello, Creator Tools![/bold green]"
-    )
+    console.print("[bold green]Hello, Creator Tools![/bold green]")
 
 
 @app.command(name="doctor")
@@ -42,9 +40,7 @@ def config_command() -> None:
     """現在の設定を表示します。"""
     config = load_config()
 
-    console.print(
-        f"[blue]設定ファイル:[/blue] {get_config_path()}"
-    )
+    console.print(f"[blue]設定ファイル:[/blue] {get_config_path()}")
     console.print()
     console.print_json(
         json.dumps(
@@ -66,9 +62,7 @@ def download_command(
     try:
         download_video(url)
     except (RuntimeError, ValueError) as error:
-        console.print(
-            f"[bold red]エラー:[/bold red] {error}"
-        )
+        console.print(f"[bold red]エラー:[/bold red] {error}")
         raise typer.Exit(code=1) from error
     except KeyboardInterrupt:
         console.print()
