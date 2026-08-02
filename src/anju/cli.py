@@ -9,6 +9,7 @@ from rich.console import Console
 from anju.config import get_config_path, load_config
 from anju.doctor import run_doctor
 from anju.downloader import download_video
+from anju.highlighter import highlight_project
 from anju.transcriber import transcribe_project
 
 app = typer.Typer(
@@ -102,6 +103,53 @@ def transcribe_command(
             project_dir,
             model_size=model,
             language=language,
+        )
+    except (RuntimeError, ValueError) as error:
+        console.print(f"[bold red]エラー:[/bold red] {error}")
+        raise typer.Exit(code=1) from error
+    except KeyboardInterrupt:
+        console.print()
+        console.print("処理を中断しました。")
+        raise typer.Exit(code=130) from None
+
+
+@app.command(name="highlight")
+def highlight_command(
+    project_dir: Path = typer.Argument(
+        ...,
+        exists=True,
+        file_okay=False,
+        dir_okay=True,
+        readable=True,
+        resolve_path=True,
+        help="見どころ抽出対象のプロジェクトフォルダ",
+    ),
+    model: str = typer.Option(
+        "gemini-2.5-flash",
+        "--model",
+        "-m",
+        help="使用するGeminiモデル",
+    ),
+    max_highlights: int = typer.Option(
+        10,
+        "--max",
+        min=1,
+        max=30,
+        help="生成する見どころ候補の最大数",
+    ),
+    overwrite: bool = typer.Option(
+        False,
+        "--overwrite",
+        help="既存の結果を上書きする",
+    ),
+) -> None:
+    """字幕から見どころ候補を抽出します。"""
+    try:
+        highlight_project(
+            project_dir,
+            model_name=model,
+            max_highlights=max_highlights,
+            overwrite=overwrite,
         )
     except (RuntimeError, ValueError) as error:
         console.print(f"[bold red]エラー:[/bold red] {error}")
