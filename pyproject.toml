@@ -15,7 +15,8 @@ authors = [
 dependencies = [
     "typer>=0.16,<1.0",
     "rich>=14,<15",
-    "faster-whisper>=1.1,<2.0"
+    "faster-whisper>=1.1,<2.0",
+    "google-genai>=1.0,<2.0"
 ]
 
 [project.optional-dependencies]
