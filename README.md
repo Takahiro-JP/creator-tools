@@ -1,31 +1,23 @@
-# creator-tools
+# Creator Tools
 
 AI-powered CLI toolkit for content creators.
 
-Twitch動画のダウンロード、文字起こし、見どころ抽出、切り抜き生成などを自動化するためのCLIツールです。
+## Features
 
-## Planned features
+- Download Twitch VODs
+- Organize projects
+- Transcribe with Whisper
+- Detect highlights with Gemini
+- Generate clips (coming soon)
+- Generate thumbnails (coming soon)
 
-- Twitch VOD download
-- Date-based project organization
-- Whisper transcription
-- Gemini highlight detection
-- Automatic clip generation with ffmpeg
-- DaVinci Resolve workflow support
+## Installation
 
-## Requirements
+...
 
-- Python 3.11 or newer
-- yt-dlp
-- ffmpeg
-- TwitchDownloaderCLI
+## Usage
 
-## Development setup
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -e ".[dev]"
-
-
-
+anju doctor
+anju download
+anju transcribe
+anju highlight
