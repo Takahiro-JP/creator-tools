@@ -3,7 +3,8 @@ repos:
     rev: v0.12.8
     hooks:
       - id: ruff-check
-        args: [--fix]
+        args:
+          - --fix
 
       - id: ruff-format
 
@@ -14,4 +15,3 @@ repos:
         entry: pytest
         language: system
         pass_filenames: false
-
