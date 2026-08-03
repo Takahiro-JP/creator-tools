@@ -2,9 +2,9 @@ from pathlib import Path
 
 import pytest
 
+from anju.ai.prompts import build_highlight_prompt
+from anju.ai.schemas import HighlightItem
 from anju.highlighter import (
-    HighlightItem,
-    build_prompt,
     create_markdown,
     resolve_highlight_paths,
 )
@@ -47,7 +47,7 @@ def test_resolve_highlight_paths_without_srt(
 
 
 def test_build_prompt() -> None:
-    prompt = build_prompt(
+    prompt = build_highlight_prompt(
         metadata={
             "title": "Test title",
             "uploader": "Test uploader",
