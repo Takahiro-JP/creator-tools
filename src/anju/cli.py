@@ -11,6 +11,7 @@ from anju.commands import (
     hello,
     highlight,
     subtitle,
+    thumbnail,
     transcribe,
 )
 
@@ -35,6 +36,7 @@ highlight.register(app)
 clipgen.register(app)
 subtitle.register(app)
 burn_subtitle.register(app)
+thumbnail.register(app)
 
 
 if __name__ == "__main__":
