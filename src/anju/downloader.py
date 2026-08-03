@@ -108,7 +108,11 @@ def get_video_metadata(url: str) -> dict[str, Any]:
     return metadata
 
 
-def download_video(url: str) -> None:
+def download_video(
+    url: str,
+    *,
+    overwrite: bool = False,
+) -> Project:
     """Twitch VODをダウンロードしてプロジェクトを作成する。"""
     config = load_config()
     cli_path = find_twitch_downloader(config)
@@ -160,7 +164,37 @@ def download_video(url: str) -> None:
 
     project.save_metadata(metadata)
 
+    video_extensions = {
+        ".mp4",
+        ".mkv",
+        ".mov",
+        ".webm",
+    }
+
+    existing_videos = sorted(
+        path
+        for path in project.raw_dir.iterdir()
+        if path.is_file() and path.suffix.lower() in video_extensions
+    )
+
+    if existing_videos and not overwrite:
+        console.print()
+        console.print(
+            "[yellow]元動画はすでに存在するため、"
+            "ダウンロードをスキップします。[/yellow]"
+        )
+        console.print(existing_videos[0])
+
+        return project
+
+    if overwrite:
+        for existing_video in existing_videos:
+            existing_video.unlink()
+
     temporary_path = project.raw_dir / f"{video_id}.mp4"
+
+    if temporary_path.exists():
+        temporary_path.unlink()
 
     final_path = project.raw_dir / (f"{date_text}_{uploader}_{title}.mp4")
 
@@ -207,3 +241,5 @@ def download_video(url: str) -> None:
     console.print(project.metadata_path)
 
     open_folder(project.root_dir)
+
+    return project
