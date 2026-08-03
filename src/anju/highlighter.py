@@ -1,34 +1,17 @@
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from google import genai
-from google.genai import types
-from pydantic import BaseModel, Field
 from rich.console import Console
 
+from anju.ai.client import generate_structured_content
+from anju.ai.prompts import build_highlight_prompt
+from anju.ai.schemas import HighlightItem, HighlightResponse
+
 console = Console()
-
-
-class HighlightResponse(BaseModel):
-    """Geminiから受け取る見どころ候補一覧。"""
-
-    highlights: list[HighlightItem]
-
-
-class HighlightItem(BaseModel):
-    """Geminiから受け取る見どころ候補。"""
-
-    start_time: str = Field(description="開始時刻。HH:MM:SS形式")
-    end_time: str = Field(description="終了時刻。HH:MM:SS形式")
-    title: str = Field(description="短い見どころタイトル")
-    summary: str = Field(description="何が面白いのかを説明する短い要約")
-    reason: str = Field(description="切り抜き候補として選んだ理由")
-    score: int = Field(ge=1, le=100, description="見どころとしての評価。1から100")
 
 
 @dataclass(frozen=True)
@@ -98,41 +81,6 @@ def load_project_metadata(
     return metadata
 
 
-def build_prompt(
-    *,
-    metadata: dict[str, Any],
-    subtitles: str,
-    max_highlights: int,
-) -> str:
-    """Geminiへ送信するプロンプトを作成する。"""
-    title = metadata.get("title") or "不明"
-    uploader = metadata.get("uploader") or "不明"
-
-    return f"""
-あなたはゲーム配信の切り抜き動画を企画する編集者です。
-
-以下はTwitch配信のSRT字幕です。
-YouTubeの横動画またはショート動画に向く見どころを、
-最大{max_highlights}件選んでください。
-
-配信者: {uploader}
-配信タイトル: {title}
-
-選定基準:
-- 驚き、悲鳴、笑い、失敗、予想外の出来事
-- 視聴者が状況を理解しやすい
-- 前後を含めて30秒から120秒程度で成立する
-- 同じ場面を重複して選ばない
-- 内容が薄い場面は無理に選ばない
-- 開始時刻と終了時刻はSRTの時間を根拠にする
-- 前後の文脈が必要なら少し広めに時間を取る
-- 日本語で回答する
-
-SRT字幕:
-{subtitles}
-""".strip()
-
-
 def create_markdown(
     highlights: list[HighlightItem],
 ) -> str:
@@ -166,11 +114,6 @@ def highlight_project(
     overwrite: bool = False,
 ) -> None:
     """字幕からGeminiで見どころ候補を抽出する。"""
-    api_key = os.environ.get("GEMINI_API_KEY")
-
-    if not api_key:
-        raise RuntimeError("GEMINI_API_KEYが設定されていません。")
-
     if max_highlights < 1:
         raise ValueError("max_highlightsは1以上にしてください。")
 
@@ -188,6 +131,7 @@ def highlight_project(
 
         if existing:
             files = "\n".join(str(path) for path in existing)
+
             raise RuntimeError(
                 "見どころ抽出結果がすでに存在します。\n"
                 f"{files}\n"
@@ -195,12 +139,18 @@ def highlight_project(
             )
 
     metadata = load_project_metadata(paths.project_dir)
-    subtitles = paths.subtitles_path.read_text(encoding="utf-8")
+
+    try:
+        subtitles = paths.subtitles_path.read_text(encoding="utf-8")
+    except OSError as error:
+        raise RuntimeError(
+            f"字幕ファイルを読み込めません: {paths.subtitles_path}"
+        ) from error
 
     if not subtitles.strip():
         raise RuntimeError(f"字幕ファイルが空です: {paths.subtitles_path}")
 
-    prompt = build_prompt(
+    prompt = build_highlight_prompt(
         metadata=metadata,
         subtitles=subtitles,
         max_highlights=max_highlights,
@@ -211,25 +161,12 @@ def highlight_project(
     console.print(f"字幕: {paths.subtitles_path}")
     console.print()
 
-    client = genai.Client(api_key=api_key)
-
-    try:
-        response = client.models.generate_content(
-            model=model_name,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                temperature=0.3,
-                response_mime_type="application/json",
-                response_schema=HighlightResponse,
-            ),
-        )
-    except Exception as error:
-        raise RuntimeError(f"Gemini APIの呼び出しに失敗しました: {error}") from error
-
-    parsed = response.parsed
-
-    if not isinstance(parsed, HighlightResponse):
-        raise RuntimeError("Geminiの応答を解析できませんでした。")
+    parsed = generate_structured_content(
+        model_name=model_name,
+        prompt=prompt,
+        response_model=HighlightResponse,
+        temperature=0.3,
+    )
 
     highlights = sorted(
         parsed.highlights,
