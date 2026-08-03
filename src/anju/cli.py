@@ -10,6 +10,7 @@ from anju.commands import (
     download,
     hello,
     highlight,
+    pipeline,
     subtitle,
     thumbnail,
     transcribe,
@@ -33,6 +34,7 @@ config.register(app)
 download.register(app)
 transcribe.register(app)
 highlight.register(app)
+pipeline.register(app)
 clipgen.register(app)
 subtitle.register(app)
 burn_subtitle.register(app)
