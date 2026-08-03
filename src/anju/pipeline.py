@@ -6,6 +6,9 @@ from pathlib import Path
 from time import perf_counter
 
 from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
+from rich.text import Text
 
 from anju.clipgen import generate_project_clips
 from anju.downloader import download_video
@@ -26,6 +29,100 @@ class PipelineReport:
     completed: tuple[str, ...]
     skipped: tuple[str, ...]
     elapsed_seconds: float
+
+
+def _format_elapsed_time(seconds: float) -> str:
+    """処理時間を読みやすい形式へ変換する。"""
+    total_seconds = max(0, round(seconds))
+
+    minutes, secs = divmod(total_seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+
+    if hours:
+        return f"{hours}h {minutes}m {secs}s"
+
+    if minutes:
+        return f"{minutes}m {secs}s"
+
+    return f"{seconds:.1f}s"
+
+
+def print_pipeline_summary(
+    report: PipelineReport,
+) -> None:
+    """Pipelineの実行結果を見やすく表示する。"""
+    stage_table = Table(
+        show_header=True,
+        header_style="bold cyan",
+        box=None,
+        padding=(0, 2),
+    )
+    stage_table.add_column("Status", width=10)
+    stage_table.add_column("Stage")
+
+    for stage in report.completed:
+        stage_table.add_row(
+            "[bold green]✓ Done[/bold green]",
+            stage,
+        )
+
+    for stage in report.skipped:
+        stage_table.add_row(
+            "[bold yellow]↷ Skip[/bold yellow]",
+            stage,
+        )
+
+    summary_table = Table(
+        show_header=False,
+        box=None,
+        padding=(0, 2),
+    )
+    summary_table.add_column(
+        "Label",
+        style="bold blue",
+        no_wrap=True,
+    )
+    summary_table.add_column("Value")
+
+    summary_table.add_row(
+        "Project",
+        str(report.project_dir),
+    )
+    summary_table.add_row(
+        "Completed",
+        str(len(report.completed)),
+    )
+    summary_table.add_row(
+        "Skipped",
+        str(len(report.skipped)),
+    )
+    summary_table.add_row(
+        "Processing Time",
+        _format_elapsed_time(report.elapsed_seconds),
+    )
+
+    content = Table.grid(
+        padding=(1, 0),
+    )
+    content.add_row(
+        Text(
+            "Creator Tools Pipeline Complete",
+            style="bold green",
+            justify="center",
+        )
+    )
+    content.add_row(stage_table)
+    content.add_row(summary_table)
+
+    console.print()
+    console.print(
+        Panel(
+            content,
+            title="[bold green]🎉 Success[/bold green]",
+            border_style="green",
+            padding=(1, 2),
+        )
+    )
 
 
 def _run_stage(
@@ -230,18 +327,13 @@ def run_pipeline(
 
     elapsed_seconds = perf_counter() - started_at
 
-    console.print()
-    console.print("────────────────────────────")
-    console.print("[bold green]Pipeline Complete[/bold green]")
-    console.print()
-    console.print(f"[blue]Project:[/blue] {project_dir}")
-    console.print(f"[blue]Completed:[/blue] {len(completed)}")
-    console.print(f"[blue]Skipped:[/blue] {len(skipped)}")
-    console.print(f"[blue]Processing Time:[/blue] {elapsed_seconds:.1f} sec")
-
-    return PipelineReport(
+    report = PipelineReport(
         project_dir=project_dir,
         completed=tuple(completed),
         skipped=tuple(skipped),
         elapsed_seconds=elapsed_seconds,
     )
+
+    print_pipeline_summary(report)
+
+    return report

@@ -1,7 +1,12 @@
 from pathlib import Path
 from types import SimpleNamespace
 
-from anju.pipeline import run_pipeline
+from anju.pipeline import (
+    PipelineReport,
+    _format_elapsed_time,
+    print_pipeline_summary,
+    run_pipeline,
+)
 
 
 def test_run_pipeline(
@@ -112,3 +117,37 @@ def test_pipeline_can_skip_burn_subtitle(
 
     assert calls == []
     assert "Subtitle Burn-in" in report.skipped
+
+
+def test_format_elapsed_time() -> None:
+    assert _format_elapsed_time(31.2) == "31.2s"
+    assert _format_elapsed_time(90) == "1m 30s"
+    assert _format_elapsed_time(3661) == "1h 1m 1s"
+
+
+def test_print_pipeline_summary(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    report = PipelineReport(
+        project_dir=tmp_path,
+        completed=(
+            "Download",
+            "Thumbnail Ideas",
+        ),
+        skipped=(
+            "Transcription",
+            "Highlight Detection",
+        ),
+        elapsed_seconds=31.2,
+    )
+
+    print_pipeline_summary(report)
+
+    output = capsys.readouterr().out
+
+    assert "Creator Tools Pipeline Complete" in output
+    assert "Download" in output
+    assert "Thumbnail Ideas" in output
+    assert "Transcription" in output
+    assert "31.2s" in output
