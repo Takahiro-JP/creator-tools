@@ -48,17 +48,27 @@ class ClipgenPaths:
 
 
 def parse_timestamp(value: str) -> float:
-    """HH:MM:SS形式を秒数へ変換する。"""
+    """時刻文字列を秒数へ変換する。
+
+    対応形式:
+    - HH:MM:SS
+    - HH:MM:SS.mmm
+    - HH:MM:SS,mmm
+    """
+    normalized = value.strip().replace(",", ".")
+
     match = re.fullmatch(
         r"(?P<hours>\d{1,3}):"
         r"(?P<minutes>[0-5]\d):"
         r"(?P<seconds>[0-5]\d(?:\.\d+)?)",
-        value.strip(),
+        normalized,
     )
 
     if not match:
         raise ValueError(
-            f"時刻形式が不正です: {value}\nHH:MM:SS形式で指定してください。"
+            f"時刻形式が不正です: {value}\n"
+            "HH:MM:SS、HH:MM:SS.mmm、"
+            "またはHH:MM:SS,mmm形式で指定してください。"
         )
 
     hours = int(match.group("hours"))
