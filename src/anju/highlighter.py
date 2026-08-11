@@ -170,7 +170,7 @@ def highlight_project(
 
     highlights = sorted(
         parsed.highlights,
-        key=lambda item: item.score,
+        key=lambda item: item.start_time,
         reverse=True,
     )[:max_highlights]
 
