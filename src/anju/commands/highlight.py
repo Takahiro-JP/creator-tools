@@ -32,7 +32,7 @@ def register(app: typer.Typer) -> None:
             10,
             "--max",
             min=1,
-            max=30,
+            max=50,
             help="生成する見どころ候補の最大数",
         ),
         overwrite: bool = typer.Option(
@@ -40,12 +40,19 @@ def register(app: typer.Typer) -> None:
             "--overwrite",
             help="既存の結果を上書きする",
         ),
+        append: bool = typer.Option(
+            False,
+            "--append",
+            help="既存の結果に新しい見どころ候補を追加する",
+        ),
     ) -> None:
         """字幕から見どころ候補を抽出します。"""
+
         execute_command(
             highlight_project,
             project_dir,
             model_name=model,
             max_highlights=max_highlights,
             overwrite=overwrite,
+            append=append,
         )
