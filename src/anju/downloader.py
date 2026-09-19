@@ -108,6 +108,49 @@ def get_video_metadata(url: str) -> dict[str, Any]:
     return metadata
 
 
+def remux_for_resolve(video_path: Path) -> None:
+    """映像・音声のみを残してDaVinci Resolve向けMP4に整える。"""
+    if shutil.which("ffmpeg") is None:
+        raise RuntimeError("ffmpegが見つかりません。")
+
+    remuxed_path = video_path.with_name(f"{video_path.stem}.remux{video_path.suffix}")
+
+    if remuxed_path.exists():
+        remuxed_path.unlink()
+
+    console.print()
+    console.print("[cyan]DaVinci Resolve向けに動画を整えています...[/cyan]")
+
+    result = subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(video_path),
+            "-map",
+            "0:v:0",
+            "-map",
+            "0:a:0",
+            "-c",
+            "copy",
+            str(remuxed_path),
+        ]
+    )
+
+    if result.returncode != 0:
+        if remuxed_path.exists():
+            remuxed_path.unlink()
+        raise RuntimeError("動画のremuxに失敗しました。")
+
+    if not remuxed_path.exists():
+        raise RuntimeError("remux後の動画ファイルが見つかりません。")
+
+    video_path.unlink()
+    remuxed_path.rename(video_path)
+
+    console.print("[green]Resolve向けの動画整形が完了しました。[/green]")
+
+
 def download_video(
     url: str,
     *,
@@ -227,6 +270,8 @@ def download_video(
         raise RuntimeError(
             f"ダウンロード済みファイルが見つかりません。\n{temporary_path}"
         )
+
+    remux_for_resolve(temporary_path)
 
     temporary_path.rename(final_path)
 
