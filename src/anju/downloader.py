@@ -108,6 +108,32 @@ def get_video_metadata(url: str) -> dict[str, Any]:
     return metadata
 
 
+def supports_h264_videotoolbox() -> bool:
+    """FFmpegがh264_videotoolboxに対応しているか確認する。"""
+    if platform.system() != "Darwin":
+        return False
+
+    if shutil.which("ffmpeg") is None:
+        return False
+
+    result = subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-encoders",
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+
+    if result.returncode != 0:
+        return False
+
+    return "h264_videotoolbox" in result.stdout
+
+
 def convert_for_resolve(
     video_path: Path,
 ) -> Path:
@@ -124,19 +150,26 @@ def convert_for_resolve(
 
     console.print()
     console.print("[cyan]DaVinci Resolve向けに動画を変換しています...[/cyan]")
-    console.print("[yellow]長時間の動画では変換に時間がかかります。[/yellow]")
-    console.print()
 
-    result = subprocess.run(
-        [
-            "ffmpeg",
-            "-y",
-            "-i",
-            str(video_path),
-            "-map",
-            "0:v:0",
-            "-map",
-            "0:a:0",
+    if supports_h264_videotoolbox():
+        console.print(
+            "[green]VideoToolboxによるハードウェアエンコードを使用します。[/green]"
+        )
+
+        video_encoder_args = [
+            "-c:v",
+            "h264_videotoolbox",
+            "-b:v",
+            "12M",
+            "-pix_fmt",
+            "yuv420p",
+        ]
+    else:
+        console.print(
+            "[yellow]VideoToolboxを使用できないため、libx264で変換します。[/yellow]"
+        )
+
+        video_encoder_args = [
             "-c:v",
             "libx264",
             "-preset",
@@ -145,15 +178,30 @@ def convert_for_resolve(
             "18",
             "-pix_fmt",
             "yuv420p",
-            "-c:a",
-            "aac",
-            "-b:a",
-            "192k",
-            "-movflags",
-            "+faststart",
-            str(converted_path),
         ]
-    )
+
+    console.print()
+
+    command = [
+        "ffmpeg",
+        "-y",
+        "-i",
+        str(video_path),
+        "-map",
+        "0:v:0",
+        "-map",
+        "0:a:0",
+        *video_encoder_args,
+        "-c:a",
+        "aac",
+        "-b:a",
+        "192k",
+        "-movflags",
+        "+faststart",
+        str(converted_path),
+    ]
+
+    result = subprocess.run(command)
 
     if result.returncode != 0:
         if converted_path.exists():
@@ -297,12 +345,11 @@ def download_video(
 
     converted_path = convert_for_resolve(temporary_path)
 
-    # Resolve向け動画の生成に成功してから
-    # TwitchDownloaderCLIが生成した元ファイルを削除する。
+    # Resolve向け動画の生成に成功した後で、
+    # TwitchDownloaderCLIが生成した元動画を削除する。
     temporary_path.unlink()
 
-    # Resolve向けに変換した動画を
-    # プロジェクトの正式な動画ファイルにする。
+    # Resolve向け動画を正式な動画ファイル名に変更する。
     converted_path.rename(final_path)
 
     console.print()
