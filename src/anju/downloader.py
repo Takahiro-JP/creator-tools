@@ -108,18 +108,24 @@ def get_video_metadata(url: str) -> dict[str, Any]:
     return metadata
 
 
-def remux_for_resolve(video_path: Path) -> Path:
-    """映像・音声のみを残してDaVinci Resolve向けMP4に整える。"""
+def convert_for_resolve(
+    video_path: Path,
+) -> Path:
+    """DaVinci Resolve向けにH.264/AACへ再エンコードする。"""
     if shutil.which("ffmpeg") is None:
         raise RuntimeError("ffmpegが見つかりません。")
 
-    remuxed_path = video_path.with_name(f"{video_path.stem}.remux{video_path.suffix}")
+    converted_path = video_path.with_name(
+        f"{video_path.stem}.resolve{video_path.suffix}"
+    )
 
-    if remuxed_path.exists():
-        remuxed_path.unlink()
+    if converted_path.exists():
+        converted_path.unlink()
 
     console.print()
-    console.print("[cyan]DaVinci Resolve向けに動画を整えています...[/cyan]")
+    console.print("[cyan]DaVinci Resolve向けに動画を変換しています...[/cyan]")
+    console.print("[yellow]長時間の動画では変換に時間がかかります。[/yellow]")
+    console.print()
 
     result = subprocess.run(
         [
@@ -131,19 +137,34 @@ def remux_for_resolve(video_path: Path) -> Path:
             "0:v:0",
             "-map",
             "0:a:0",
-            "-c",
-            "copy",
-            str(remuxed_path),
+            "-c:v",
+            "libx264",
+            "-preset",
+            "fast",
+            "-crf",
+            "18",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
+            "-movflags",
+            "+faststart",
+            str(converted_path),
         ]
     )
 
     if result.returncode != 0:
-        if remuxed_path.exists():
-            remuxed_path.unlink()
+        if converted_path.exists():
+            converted_path.unlink()
 
-        raise RuntimeError("動画のremuxに失敗しました。")
+        raise RuntimeError("DaVinci Resolve向け動画の変換に失敗しました。")
 
-    return remuxed_path
+    if not converted_path.exists():
+        raise RuntimeError("変換後の動画ファイルが見つかりません。")
+
+    return converted_path
 
 
 def download_video(
@@ -164,6 +185,9 @@ def download_video(
 
     if shutil.which("yt-dlp") is None:
         raise RuntimeError("yt-dlpが見つかりません。")
+
+    if shutil.which("ffmpeg") is None:
+        raise RuntimeError("ffmpegが見つかりません。")
 
     video_id = extract_video_id(url)
 
@@ -268,13 +292,23 @@ def download_video(
             f"ダウンロード済みファイルが見つかりません。\n{temporary_path}"
         )
 
-    remuxed_path = remux_for_resolve(temporary_path)
+    console.print()
+    console.print("[bold green]Twitch動画のダウンロードが完了しました。[/bold green]")
 
+    converted_path = convert_for_resolve(temporary_path)
+
+    # Resolve向け動画の生成に成功してから
+    # TwitchDownloaderCLIが生成した元ファイルを削除する。
     temporary_path.unlink()
-    remuxed_path.rename(final_path)
+
+    # Resolve向けに変換した動画を
+    # プロジェクトの正式な動画ファイルにする。
+    converted_path.rename(final_path)
 
     console.print()
-    console.print("[bold green]ダウンロードが完了しました。[/bold green]")
+    console.print(
+        "[bold green]DaVinci Resolve向け動画の変換が完了しました。[/bold green]"
+    )
     console.print(final_path)
 
     console.print()
