@@ -14,6 +14,8 @@ from anju.ai.schemas import HighlightItem, HighlightResponse
 
 console = Console()
 
+DEFAULT_CHUNK_MINUTES = 120
+
 
 @dataclass(frozen=True)
 class HighlightPaths:
@@ -24,6 +26,7 @@ class HighlightPaths:
     clips_dir: Path
     json_path: Path
     markdown_path: Path
+    state_path: Path
 
 
 def resolve_highlight_paths(project_dir: Path) -> HighlightPaths:
@@ -51,6 +54,7 @@ def resolve_highlight_paths(project_dir: Path) -> HighlightPaths:
         clips_dir=clips_dir,
         json_path=clips_dir / "highlights.json",
         markdown_path=clips_dir / "highlights.md",
+        state_path=clips_dir / "highlight_state.json",
     )
 
 
@@ -105,7 +109,6 @@ def timestamp_to_seconds(timestamp: str) -> float:
     """HH:MM:SS(.mmm)形式の時刻を秒に変換する."""
 
     normalized = timestamp.replace(",", ".")
-
     parts = normalized.split(":")
 
     if len(parts) != 3:
@@ -114,6 +117,18 @@ def timestamp_to_seconds(timestamp: str) -> float:
     hours, minutes, seconds = parts
 
     return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+
+
+def seconds_to_timestamp(seconds: float) -> str:
+    """秒をHH:MM:SS形式へ変換する."""
+
+    total_seconds = max(0, int(seconds))
+
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    secs = total_seconds % 60
+
+    return f"{hours:02d}:{minutes:02d}:{secs:02d}"
 
 
 def get_latest_end_time(
@@ -132,13 +147,44 @@ def get_latest_end_time(
     return latest.end_time
 
 
-def trim_subtitles_after(
+def get_subtitle_bounds(
     subtitles: str,
-    start_time: str,
-) -> str:
-    """指定時刻以降のSRT字幕だけを残す."""
+) -> tuple[float, float]:
+    """字幕全体の開始時刻と終了時刻を取得する."""
 
-    start_seconds = timestamp_to_seconds(start_time)
+    starts: list[float] = []
+    ends: list[float] = []
+
+    for line in subtitles.splitlines():
+        if "-->" not in line:
+            continue
+
+        parts = line.split("-->")
+
+        if len(parts) != 2:
+            continue
+
+        try:
+            start = timestamp_to_seconds(parts[0].strip())
+            end = timestamp_to_seconds(parts[1].strip())
+        except ValueError:
+            continue
+
+        starts.append(start)
+        ends.append(end)
+
+    if not starts or not ends:
+        raise RuntimeError("字幕から時間情報を取得できませんでした。")
+
+    return min(starts), max(ends)
+
+
+def trim_subtitles_range(
+    subtitles: str,
+    start_seconds: float,
+    end_seconds: float,
+) -> str:
+    """指定した時間範囲のSRT字幕だけを残す."""
 
     blocks = re.split(
         r"\n\s*\n",
@@ -158,17 +204,66 @@ def trim_subtitles_after(
         if time_line is None:
             continue
 
-        subtitle_start = time_line.split("-->")[0].strip()
+        parts = time_line.split("-->")
+
+        if len(parts) != 2:
+            continue
 
         try:
-            subtitle_start_seconds = timestamp_to_seconds(subtitle_start)
+            subtitle_start = timestamp_to_seconds(parts[0].strip())
+            subtitle_end = timestamp_to_seconds(parts[1].strip())
         except ValueError:
             continue
 
-        if subtitle_start_seconds >= start_seconds:
+        # チャンクと少しでも重なる字幕を残す。
+        if subtitle_end >= start_seconds and subtitle_start < end_seconds:
             kept_blocks.append(block)
 
     return "\n\n".join(kept_blocks)
+
+
+def load_highlight_state(
+    state_path: Path,
+) -> float | None:
+    """前回処理済みの時刻を読み込む."""
+
+    if not state_path.is_file():
+        return None
+
+    try:
+        data = json.loads(state_path.read_text(encoding="utf-8"))
+    except OSError as error:
+        raise RuntimeError(f"見どころ進捗を読み込めません: {state_path}") from error
+    except json.JSONDecodeError as error:
+        raise RuntimeError(f"見どころ進捗のJSON形式が不正です: {state_path}") from error
+
+    last_processed_time = data.get("last_processed_time")
+
+    if not isinstance(last_processed_time, str):
+        raise RuntimeError("highlight_state.json の last_processed_time が不正です。")
+
+    return timestamp_to_seconds(last_processed_time)
+
+
+def save_highlight_state(
+    state_path: Path,
+    last_processed_seconds: float,
+) -> None:
+    """処理済みの時刻を保存する."""
+
+    state = {"last_processed_time": seconds_to_timestamp(last_processed_seconds)}
+
+    try:
+        state_path.write_text(
+            json.dumps(
+                state,
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+    except OSError as error:
+        raise RuntimeError(f"見どころ進捗を書き込めません: {state_path}") from error
 
 
 def create_markdown(
@@ -207,11 +302,15 @@ def highlight_project(
     max_highlights: int = 10,
     overwrite: bool = False,
     append: bool = False,
+    chunk_minutes: int = DEFAULT_CHUNK_MINUTES,
 ) -> None:
     """字幕からGeminiで見どころ候補を抽出する."""
 
     if max_highlights < 1:
         raise RuntimeError("max_highlightsは1以上で指定してください。")
+
+    if chunk_minutes < 1:
+        raise RuntimeError("chunk_minutesは1以上で指定してください。")
 
     if overwrite and append:
         raise RuntimeError("--overwrite と --append は同時に指定できません。")
@@ -244,12 +343,51 @@ def highlight_project(
     metadata = load_project_metadata(project_dir)
 
     try:
-        subtitles = paths.subtitles_path.read_text(encoding="utf-8")
+        full_subtitles = paths.subtitles_path.read_text(encoding="utf-8")
     except OSError as error:
         raise RuntimeError(f"字幕を読み込めません: {paths.subtitles_path}") from error
 
-    if not subtitles.strip():
+    if not full_subtitles.strip():
         raise RuntimeError(f"字幕ファイルが空です: {paths.subtitles_path}")
+
+    subtitle_start, subtitle_end = get_subtitle_bounds(full_subtitles)
+
+    chunk_seconds = chunk_minutes * 60
+
+    if append:
+        state_start = load_highlight_state(paths.state_path)
+
+        if state_start is not None:
+            chunk_start = state_start
+        else:
+            # 旧バージョンとの互換性。
+            # stateがまだない既存プロジェクトでは、
+            # 既存候補の最後から続きを開始する。
+            latest_end_time = get_latest_end_time(existing_highlights)
+
+            if latest_end_time is not None:
+                chunk_start = timestamp_to_seconds(latest_end_time)
+            else:
+                chunk_start = subtitle_start
+    else:
+        chunk_start = subtitle_start
+
+    if chunk_start >= subtitle_end:
+        raise RuntimeError("字幕の最後まで見どころ抽出済みです。")
+
+    chunk_end = min(
+        chunk_start + chunk_seconds,
+        subtitle_end,
+    )
+
+    subtitles = trim_subtitles_range(
+        full_subtitles,
+        chunk_start,
+        chunk_end,
+    )
+
+    if not subtitles.strip():
+        raise RuntimeError("指定された時間範囲に字幕がありません。")
 
     console.print("[cyan]Geminiで見どころを抽出しています...[/cyan]")
     console.print(f"モデル: [bold]{model_name}[/bold]")
@@ -259,25 +397,20 @@ def highlight_project(
         console.print(f"既存の見どころ候補: {len(existing_highlights)}件")
         console.print(f"追加生成する候補: 最大{max_highlights}件")
         console.print("モード: 追加生成")
-
-        latest_end_time = get_latest_end_time(existing_highlights)
-
-        if latest_end_time is not None:
-            subtitles = trim_subtitles_after(
-                subtitles,
-                latest_end_time,
-            )
-
-            if not subtitles.strip():
-                raise RuntimeError("最後の見どころ以降に字幕がありません。")
-
-            console.print(f"[cyan]追加抽出開始位置: {latest_end_time} 以降[/cyan]")
-
     elif overwrite:
         console.print("モード: 上書き")
-
     else:
         console.print("モード: 新規生成")
+
+    console.print(
+        "[cyan]"
+        f"抽出対象: "
+        f"{seconds_to_timestamp(chunk_start)}"
+        " ～ "
+        f"{seconds_to_timestamp(chunk_end)}"
+        f" ({chunk_minutes}分チャンク)"
+        "[/cyan]"
+    )
 
     prompt = build_highlight_prompt(
         metadata=metadata,
@@ -285,6 +418,8 @@ def highlight_project(
         max_highlights=max_highlights,
     )
 
+    # ここでGeminiが429などで失敗した場合、
+    # stateはまだ更新されない。
     parsed = generate_structured_content(
         model_name=model_name,
         prompt=prompt,
@@ -296,6 +431,16 @@ def highlight_project(
         parsed.highlights,
         key=lambda item: timestamp_to_seconds(item.start_time),
     )[:max_highlights]
+
+    # Geminiがチャンク外の時間を返した場合に備えて除外する。
+    new_highlights = [
+        item
+        for item in new_highlights
+        if (
+            timestamp_to_seconds(item.start_time) >= chunk_start
+            and timestamp_to_seconds(item.start_time) < chunk_end
+        )
+    ]
 
     if append:
         existing_ranges = {
@@ -340,6 +485,13 @@ def highlight_project(
     except OSError as error:
         raise RuntimeError("見どころ抽出結果を書き込めません。") from error
 
+    # JSON / Markdownの保存まで成功してから
+    # 次回の開始地点を進める。
+    save_highlight_state(
+        paths.state_path,
+        chunk_end,
+    )
+
     console.print()
     console.print("[green bold]見どころ抽出が完了しました。[/green bold]")
 
@@ -349,5 +501,7 @@ def highlight_project(
     else:
         console.print(f"生成: {len(highlights)}件")
 
+    console.print(f"処理済み位置: {seconds_to_timestamp(chunk_end)}")
     console.print(f"JSON: {paths.json_path}")
     console.print(f"Markdown: {paths.markdown_path}")
+    console.print(f"State: {paths.state_path}")

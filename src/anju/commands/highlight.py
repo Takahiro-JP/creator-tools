@@ -45,6 +45,13 @@ def register(app: typer.Typer) -> None:
             "--append",
             help="既存の結果に新しい見どころ候補を追加する",
         ),
+        chunk_minutes: int = typer.Option(
+            120,
+            "--chunk-minutes",
+            min=1,
+            max=240,
+            help="1回に解析する字幕の時間（分）",
+        ),
     ) -> None:
         """字幕から見どころ候補を抽出します。"""
 
@@ -55,4 +62,5 @@ def register(app: typer.Typer) -> None:
             max_highlights=max_highlights,
             overwrite=overwrite,
             append=append,
+            chunk_minutes=chunk_minutes,
         )
