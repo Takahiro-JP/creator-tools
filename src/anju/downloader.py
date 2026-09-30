@@ -108,7 +108,7 @@ def get_video_metadata(url: str) -> dict[str, Any]:
     return metadata
 
 
-def remux_for_resolve(video_path: Path) -> None:
+def remux_for_resolve(video_path: Path) -> Path:
     """映像・音声のみを残してDaVinci Resolve向けMP4に整える。"""
     if shutil.which("ffmpeg") is None:
         raise RuntimeError("ffmpegが見つかりません。")
@@ -140,15 +140,10 @@ def remux_for_resolve(video_path: Path) -> None:
     if result.returncode != 0:
         if remuxed_path.exists():
             remuxed_path.unlink()
+
         raise RuntimeError("動画のremuxに失敗しました。")
 
-    if not remuxed_path.exists():
-        raise RuntimeError("remux後の動画ファイルが見つかりません。")
-
-    video_path.unlink()
-    remuxed_path.rename(video_path)
-
-    console.print("[green]Resolve向けの動画整形が完了しました。[/green]")
+    return remuxed_path
 
 
 def download_video(
@@ -217,14 +212,16 @@ def download_video(
     existing_videos = sorted(
         path
         for path in project.raw_dir.iterdir()
-        if path.is_file() and path.suffix.lower() in video_extensions
+        if (path.is_file() and path.suffix.lower() in video_extensions)
     )
 
     if existing_videos and not overwrite:
         console.print()
         console.print(
-            "[yellow]元動画はすでに存在するため、"
-            "ダウンロードをスキップします。[/yellow]"
+            "[yellow]"
+            "元動画はすでに存在するため、"
+            "ダウンロードをスキップします。"
+            "[/yellow]"
         )
         console.print(existing_videos[0])
 
@@ -271,16 +268,19 @@ def download_video(
             f"ダウンロード済みファイルが見つかりません。\n{temporary_path}"
         )
 
-    remux_for_resolve(temporary_path)
+    remuxed_path = remux_for_resolve(temporary_path)
 
-    temporary_path.rename(final_path)
+    temporary_path.unlink()
+    remuxed_path.rename(final_path)
 
     console.print()
     console.print("[bold green]ダウンロードが完了しました。[/bold green]")
     console.print(final_path)
+
     console.print()
     console.print("[blue]プロジェクト:[/blue]")
     console.print(project.root_dir)
+
     console.print()
     console.print("[blue]メタデータ:[/blue]")
     console.print(project.metadata_path)
