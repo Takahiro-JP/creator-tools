@@ -108,23 +108,27 @@ def get_video_metadata(url: str) -> dict[str, Any]:
     return metadata
 
 
-def convert_for_resolve(
+def clean_remux_for_resolve(
     video_path: Path,
 ) -> Path:
-    """DaVinci Resolve向けにH.264/AACへ再エンコードする。"""
+    """
+    DaVinci Resolve向けにMP4をclean remuxする。
+
+    映像・音声は再エンコードせず、そのままコピーする。
+    字幕、データストリーム、チャプター、
+    元メタデータを除去する。
+    """
     if shutil.which("ffmpeg") is None:
         raise RuntimeError("ffmpegが見つかりません。")
 
-    converted_path = video_path.with_name(
-        f"{video_path.stem}.resolve{video_path.suffix}"
-    )
+    remuxed_path = video_path.with_name(f"{video_path.stem}.resolve{video_path.suffix}")
 
-    if converted_path.exists():
-        converted_path.unlink()
+    if remuxed_path.exists():
+        remuxed_path.unlink()
 
     console.print()
-    console.print("[cyan]DaVinci Resolve向けに動画を変換しています...[/cyan]")
-    console.print("[yellow]長時間の動画では変換に時間がかかります。[/yellow]")
+    console.print("[cyan]DaVinci Resolve向けに動画を整えています...[/cyan]")
+    console.print("[dim]映像・音声の再エンコードは行いません。[/dim]")
     console.print()
 
     result = subprocess.run(
@@ -138,47 +142,39 @@ def convert_for_resolve(
             "0:v:0",
             "-map",
             "0:a:0",
-            # DaVinci Resolveで読み込めた設定で
-            # H.264として映像を作り直す。
+            # 再エンコードせず、そのままコピーする。
             "-c:v",
-            "libx264",
-            "-preset",
-            "fast",
-            "-crf",
-            "18",
-            "-pix_fmt",
-            "yuv420p",
-            # 音声もAACとして作り直す。
+            "copy",
             "-c:a",
-            "aac",
-            "-b:a",
-            "192k",
-            # 不要な字幕・データストリームを除外する。
+            "copy",
+            # 字幕を除外する。
             "-sn",
+            # Data / bin_dataを除外する。
             "-dn",
             # TwitchDownloaderCLI由来の
-            # チャプターとメタデータを除外する。
-            "-map_chapters",
-            "-1",
+            # メタデータを除外する。
             "-map_metadata",
             "-1",
-            # MP4のインデックスを先頭へ移動する。
+            # チャプターを除外する。
+            "-map_chapters",
+            "-1",
+            # MP4のインデックスを先頭に配置する。
             "-movflags",
             "+faststart",
-            str(converted_path),
+            str(remuxed_path),
         ]
     )
 
     if result.returncode != 0:
-        if converted_path.exists():
-            converted_path.unlink()
+        if remuxed_path.exists():
+            remuxed_path.unlink()
 
-        raise RuntimeError("DaVinci Resolve向け動画の変換に失敗しました。")
+        raise RuntimeError("DaVinci Resolve向け動画のclean remuxに失敗しました。")
 
-    if not converted_path.exists():
-        raise RuntimeError("変換後の動画ファイルが見つかりません。")
+    if not remuxed_path.exists():
+        raise RuntimeError("clean remux後の動画ファイルが見つかりません。")
 
-    return converted_path
+    return remuxed_path
 
 
 def download_video(
@@ -309,21 +305,34 @@ def download_video(
     console.print()
     console.print("[bold green]Twitch動画のダウンロードが完了しました。[/bold green]")
 
-    converted_path = convert_for_resolve(temporary_path)
+    # DaVinci Resolve向けにclean remuxする。
+    #
+    # 映像・音声は再エンコードせず、
+    # 不要なストリームやメタデータだけを除去する。
+    remuxed_path = clean_remux_for_resolve(temporary_path)
 
-    # Resolve向け動画の生成に成功してから、
-    # TwitchDownloaderCLIが生成した元動画を削除する。
+    # clean remuxが正常に完了した後でのみ、
+    # TwitchDownloaderCLIが生成した元MP4を削除する。
     temporary_path.unlink()
 
-    # Resolve向けに変換した動画を
+    # clean remux済みMP4を
     # プロジェクトの正式な動画ファイルにする。
-    converted_path.rename(final_path)
+    remuxed_path.rename(final_path)
 
     console.print()
     console.print(
-        "[bold green]DaVinci Resolve向け動画の変換が完了しました。[/bold green]"
+        "[bold green]DaVinci Resolve向け動画の準備が完了しました。[/bold green]"
     )
     console.print(final_path)
+
+    console.print()
+    console.print(
+        "[dim]"
+        "DaVinci Resolveでは"
+        "「メディアを読み込み」から"
+        "動画を追加してください。"
+        "[/dim]"
+    )
 
     console.print()
     console.print("[blue]プロジェクト:[/blue]")
