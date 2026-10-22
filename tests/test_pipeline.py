@@ -35,7 +35,7 @@ def test_run_pipeline(
         lambda *args, **kwargs: calls.append("transcribe"),
     )
     monkeypatch.setattr(
-        "anju.pipeline.highlight_project",
+        "anju.pipeline._run_highlight_to_end",
         lambda *args, **kwargs: calls.append("highlight"),
     )
     monkeypatch.setattr(
@@ -95,7 +95,7 @@ def test_pipeline_can_skip_burn_subtitle(
 
     for target in (
         "transcribe_project",
-        "highlight_project",
+        "_run_highlight_to_end",
         "generate_project_clips",
         "generate_clip_subtitles",
         "generate_thumbnail_ideas",
