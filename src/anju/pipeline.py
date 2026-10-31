@@ -210,6 +210,11 @@ def _run_highlight_to_end(
         raise RuntimeError(f"字幕ファイルが空です: {paths.subtitles_path}")
 
     subtitle_start, subtitle_end = get_subtitle_bounds(subtitles)
+
+    # SRTの表示は秒単位なので、内部時刻も秒単位の整数にそろえる。
+    # 小数秒の差で、表示上同じ時刻の空チャンクを処理しないようにする。
+    subtitle_start = int(round(subtitle_start))
+    subtitle_end = int(round(subtitle_end))
     total_seconds = max(0, subtitle_end - subtitle_start)
 
     # 動画の長さに応じた全体の上限。端数時間は切り上げる。
@@ -250,7 +255,11 @@ def _run_highlight_to_end(
         append = bool(existing)
         existing_count = len(existing)
 
-    if current_time >= subtitle_end:
+    # 状態ファイルや既存候補由来の時刻も秒単位にそろえる。
+    current_time = int(round(current_time))
+
+    # 残り1秒以下はSRTの時刻精度では有効なチャンクとして扱わない。
+    if subtitle_end - current_time <= 1:
         console.print("[green]字幕の最後まで処理済みです。[/green]")
         return
 
@@ -263,7 +272,7 @@ def _run_highlight_to_end(
 
     chunk_seconds = DEFAULT_HIGHLIGHT_CHUNK_MINUTES * 60
 
-    while current_time < subtitle_end:
+    while subtitle_end - current_time > 1:
         if existing_count >= total_max:
             console.print(f"[yellow]全体の上限{total_max}件に達しました。[/yellow]")
             break
@@ -272,6 +281,12 @@ def _run_highlight_to_end(
             current_time + chunk_seconds,
             subtitle_end,
         )
+
+        # 丸めや時刻データの端数により空チャンクになった場合は終了する。
+        if chunk_end - current_time <= 1:
+            console.print("[green]字幕の最後まで処理済みです。[/green]")
+            break
+
         chunk_duration = chunk_end - current_time
 
         # このチャンクの上限と、動画全体の残り上限の小さい方を使う。
@@ -304,6 +319,9 @@ def _run_highlight_to_end(
         # highlight_projectがJSON/Markdown保存後に進捗を更新したことを確認。
         saved_time = load_highlight_state(paths.state_path)
 
+        if saved_time is not None:
+            saved_time = int(round(saved_time))
+
         if saved_time is None or saved_time <= current_time:
             raise RuntimeError(
                 "見どころ抽出の進捗が更新されませんでした。"
@@ -321,7 +339,7 @@ def _run_highlight_to_end(
     console.print()
     console.print(
         f"[green bold]見どころ抽出処理を終了しました。"
-        f"候補数: {existing_count}/{total_max}件[/green]"
+        f"候補数: {existing_count}/{total_max}件[/green bold]"
     )
 
 
